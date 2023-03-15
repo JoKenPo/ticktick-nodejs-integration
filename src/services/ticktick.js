@@ -4,10 +4,10 @@ import querystring from 'querystring';
 // import arrow from 'arrow';
 
 const API_URL = 'https://api.ticktick.com/api/v2/';
-const ALL_TASKS_URL = API_URL + 'batch/check/all';
-const ALL_COMPLETED_URL = API_URL + 'task/history';
+const ALL_TASKS_URL = API_URL + 'batch/check/0';
+const ALL_COMPLETED_URL = API_URL + 'project/all/completedInAll' //'task/history';
 const BATCH_TASK_URL = API_URL + 'batch/task';
-const LIST_URL = API_URL + 'project/all';
+const LIST_URL = API_URL + 'project/all/completed';
 const TASK_URL = API_URL + 'task';
 
 const TIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ';
@@ -21,7 +21,8 @@ export default class TickTick {
     this.inbox = "None";
     this.tasks = null;
     this.completed = null;
-    this.list_lookup = {};
+    this.listLookup = {};
+    this.projects = [];
   }
 
   async login() {
@@ -47,15 +48,13 @@ export default class TickTick {
       throw new Error('Failed to login');
     }
 
-    console.log("resposta foi:", response.status);
-
     this._session.defaults.headers.common.Cookie = response.headers['set-cookie'];
 
-    // await this.fetch_lists();
-    await this.fetch_completed()
+    // await this.fetchLists();
+    await this.fetch()
   }
 
-  async fetch_lists() {
+  async fetchLists() {
     const response = await this._session.get(LIST_URL);
 
     if (response.status !== 200) {
@@ -65,33 +64,37 @@ export default class TickTick {
     const data = response.data;
     this.lists = data.map((item) => {
       return {
-        id: item.id,
-        name: item.name,
+          id: item.id,
+          title: item.title,
       };
     });
 
-    // this.inbox = this.lists.find((item) => item.name === 'Inbox');
+    this.inbox = this.lists.find((item) => item.title === 'Inbox');
   }
 
   async fetch() {
-    await this.fetch_tasks();
-    await this.fetch_completed(null, null, 50);
+    await this.fetchTasks();
+    await this.fetchCompleted(null, null, 50);
   }
 
-  async fetch_tasks() {
+  async fetchTasks() {
     const response = await this._session.get(ALL_TASKS_URL);
     const data = response.data;
 
-    this.tasks = data.map((item) => {
-      return new TickTask(item);
+    this.projects = data.projectProfiles.map((item) => {
+      return item; //new TickTask(item);
+    });
+
+    this.tasks = data.syncTaskBean.update.map((item) => {
+      return item; //new TickTask(item);
     });
 
     for (const item of this.tasks) {
-      this.populate_task(item);
+      this.populateTask(item);
     }
   }
 
-  async fetch_completed(from, to, limit) {
+  async fetchCompleted(from, to, limit) {
     const from_qs = from ? from.format(TIME_FORMAT) : '';
     const to_qs = to ? to.format(TIME_FORMAT) : '';
     const qs = querystring.stringify({
@@ -104,11 +107,11 @@ export default class TickTick {
     const data = response.data;
 
     this.completed = data.map((item) => {
-      return new TickTask(item);
+      return item //new TickTask(item);
     });
 
     for (const item of this.completed) {
-      this.populate_task(item);
+      this.populateTask(item);
     }
   }
 
@@ -142,7 +145,7 @@ export default class TickTick {
   }
   
   queryInbox() {
-    return this.query((x) => x.list.name === 'Inbox');
+    return this.query((x) => x.list.title === 'Inbox');
   }
   
   queryToday() {
@@ -174,7 +177,7 @@ export default class TickTick {
   
   getListId(name) {
     for (let lst of this.lists) {
-      if (lst.name === name) {
+      if (lst.title === name) {
         return lst.id;
       }
     }
